@@ -3,6 +3,7 @@ name = "shelve"
 version = "0.1.0"
 authors = ["Robin Appelman <robin@icewind.nl>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 rocket = "0.4.2"
