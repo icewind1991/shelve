@@ -13,7 +13,7 @@ use std::env::current_dir;
 use std::fs::{create_dir, read_dir, remove_dir_all};
 use std::io;
 use std::path::PathBuf;
-use std::thread::{sleep, spawn};
+use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod expire_queue;
@@ -91,9 +91,17 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| current_dir().unwrap_or_default().join("data"));
 
-    let expire_basedir = basedir.clone();
-    let expire_queue_clone = expire_queue.clone();
+    expire_job(basedir.clone(), expire_queue.clone());
 
+    rocket::ignite()
+        .manage(tokens)
+        .manage(basedir.clone())
+        .manage(expire_queue)
+        .mount("/", routes![home, upload, download])
+        .launch();
+}
+
+fn expire_job(expire_basedir: PathBuf, expire_queue: ExpireQueue) -> JoinHandle<()> {
     spawn(move || {
         for dir_entry in read_dir(&expire_basedir).expect("Failed to list base directory") {
             if let Ok(entry) = dir_entry {
@@ -102,29 +110,17 @@ fn main() {
                     .to_str()
                     .and_then(|s| UploadId::new(s).ok())
                 {
-                    expire_queue_clone.push(upload_id);
+                    expire_queue.push(upload_id);
                 }
             }
         }
 
-        println!(
-            "Loaded {} existing uploads for expiry",
-            expire_queue_clone.len()
-        );
-
         loop {
-            for expired in expire_queue_clone.get_expired(now()) {
+            for expired in expire_queue.get_expired(now()) {
                 let _ = remove_dir_all(expire_basedir.join(expired.as_string()));
             }
 
             sleep(Duration::from_secs(5 * 60));
         }
-    });
-
-    rocket::ignite()
-        .manage(tokens)
-        .manage(basedir.clone())
-        .manage(expire_queue)
-        .mount("/", routes![home, upload, download])
-        .launch();
+    })
 }
