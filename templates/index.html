@@ -308,6 +308,18 @@
         expireInput.value = expire;
     }
 
+    function resetForm() {
+        form.reset();
+        let token = localStorage.getItem('token');
+        if (token) {
+            tokenInput.value = token;
+        }
+        let expire = localStorage.getItem('expire');
+        if (expire) {
+            expireInput.value = expire;
+        }
+    }
+
     // automatically submit the form on file select
     input.addEventListener('change', function (e) {
         showFiles(e.target.files);
@@ -339,9 +351,7 @@
             droppedFiles = e.dataTransfer.files; // the files that were dropped
             showFiles(droppedFiles);
 
-
             triggerFormSubmit();
-
         });
     }
 
@@ -369,9 +379,10 @@
         ajax.open(form.getAttribute('method'), form.getAttribute('action'), true);
 
         ajax.onload = function () {
+            resetForm();
+
             box.classList.remove('is-uploading');
             if (ajax.status >= 200 && ajax.status < 400) {
-                console.log(ajax.responseText);
                 var data = JSON.parse(ajax.responseText);
                 box.classList.add(data.success == true ? 'is-success' : 'is-error');
                 if (!data.success) {

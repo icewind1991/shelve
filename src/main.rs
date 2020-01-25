@@ -7,7 +7,6 @@ use rocket::http::{ContentType, RawStr};
 use rocket::request::FromParam;
 use rocket::response::{NamedFile, Redirect, Responder};
 use rocket::*;
-use rocket_upload::MultipartDatas;
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -20,9 +19,11 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use upload::MultipartDatas;
 
 mod expire_queue;
 mod token;
+mod upload;
 
 impl<'r> FromParam<'r> for UploadId {
     type Error = InvalidUploadIdError;
