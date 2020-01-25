@@ -3,8 +3,7 @@ use std::io::{Cursor, Read, Write};
 use std::path::Path;
 
 use rocket::data::{self, FromDataSimple};
-use rocket::http::Status;
-use rocket::{Data, Outcome, Outcome::*, Request};
+use rocket::{Data, Outcome, Request};
 
 use multipart::server::Multipart;
 
@@ -62,8 +61,6 @@ impl<'t> FromDataSimple for MultipartDatas {
 
         let mut buffer = [0u8; 4096];
 
-        let mut err_out: Option<Outcome<_, (Status, _), _>> = None;
-
         mp.foreach_entry(|entry| {
             let mut data = entry.data;
             if entry.headers.filename == None {
@@ -72,7 +69,7 @@ impl<'t> FromDataSimple for MultipartDatas {
                 loop {
                     let c = match data.read(&mut buffer) {
                         Ok(c) => c,
-                        Err(err) => {
+                        Err(_err) => {
                             return;
                         }
                     };
@@ -104,7 +101,7 @@ impl<'t> FromDataSimple for MultipartDatas {
 
                 let mut file = match File::create(&target_path) {
                     Ok(f) => f,
-                    Err(err) => {
+                    Err(_err) => {
                         return;
                     }
                 };
@@ -114,7 +111,7 @@ impl<'t> FromDataSimple for MultipartDatas {
                 loop {
                     let c = match data.read(&mut buffer) {
                         Ok(c) => c,
-                        Err(err) => {
+                        Err(_err) => {
                             try_delete(&target_path);
                             return;
                         }
@@ -128,7 +125,7 @@ impl<'t> FromDataSimple for MultipartDatas {
 
                     match file.write(&buffer[..c]) {
                         Ok(_) => (),
-                        Err(err) => {
+                        Err(_err) => {
                             try_delete(&target_path);
                             return;
                         }
@@ -143,15 +140,8 @@ impl<'t> FromDataSimple for MultipartDatas {
             }
         })
         .unwrap();
-        if let Some(failed) = err_out {
-            return failed;
-        } else {
-            let v = MultipartDatas {
-                texts: texts,
-                files: files,
-            };
-            return Outcome::Success(v);
-        }
+
+        Outcome::Success(MultipartDatas { texts, files })
     }
 }
 
