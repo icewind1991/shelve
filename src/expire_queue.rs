@@ -42,7 +42,7 @@ impl UploadId {
         // have 7 consecutive bytes of "free" space, so we discard 1 bytes
         // from the expire time
         // we xor the expire with the rng, to make the id look "nicer"
-        let expire_masked = expire ^ dbg!(u64::from_le_bytes(uuid_bytes[0..8].try_into().unwrap()));
+        let expire_masked = expire ^ u64::from_le_bytes(uuid_bytes[0..8].try_into().unwrap());
         uuid_bytes[9..].copy_from_slice(&expire_masked.to_le_bytes()[0..7]);
 
         UploadId(Uuid::from_bytes(uuid_bytes))

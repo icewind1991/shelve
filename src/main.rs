@@ -3,16 +3,21 @@
 use crate::expire_queue::{ExpireQueue, InvalidUploadIdError, UploadId};
 use crate::token::{UploadToken, ValidTokens};
 use dotenv::dotenv;
-use rocket::http::RawStr;
+use rocket::http::{ContentType, RawStr};
 use rocket::request::FromParam;
-use rocket::response::NamedFile;
+use rocket::response::{NamedFile, Redirect, Responder};
 use rocket::*;
+use rocket_upload::MultipartDatas;
+use rust_embed::RustEmbed;
+use serde::Serialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
-use std::env;
-use std::env::current_dir;
-use std::fs::{create_dir, read_dir, remove_dir_all};
+use std::env::{self, current_dir};
+use std::fs::{create_dir, read_dir, remove_dir_all, File};
 use std::io;
+use std::io::Cursor;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -29,9 +34,30 @@ impl<'r> FromParam<'r> for UploadId {
     }
 }
 
+#[derive(RustEmbed)]
+#[folder = "templates/"]
+struct Templates;
+
+struct HtmlResponse(Cow<'static, [u8]>);
+
+impl<'r> Responder<'r> for HtmlResponse {
+    fn respond_to(self, _: &Request) -> response::Result<'r> {
+        match self.0 {
+            Cow::Borrowed(s) => Response::build()
+                .header(ContentType::HTML)
+                .sized_body(Cursor::new(s))
+                .ok(),
+            Cow::Owned(s) => Response::build()
+                .header(ContentType::HTML)
+                .sized_body(Cursor::new(s))
+                .ok(),
+        }
+    }
+}
+
 #[get("/")]
-fn home() -> &'static str {
-    "Home"
+fn home() -> HtmlResponse {
+    HtmlResponse(Templates::get("index.html").unwrap_or(Cow::Borrowed(b"Template not found")))
 }
 
 fn now() -> u64 {
@@ -62,6 +88,95 @@ fn upload(
 
     data.stream_to_file(path)?;
     Ok(id.as_string())
+}
+
+#[derive(Debug, Responder)]
+enum UploadResponse {
+    Data(String),
+    Redirect(Redirect),
+}
+
+#[derive(Debug, Serialize)]
+struct UploadData {
+    success: bool,
+    error: Option<&'static str>,
+    urls: Option<Vec<String>>,
+}
+
+#[post("/upload", data = "<data>")]
+fn post_upload(
+    data: MultipartDatas,
+    accepted_tokens: State<ValidTokens>,
+    basedir: State<PathBuf>,
+    expire_queue: State<ExpireQueue>,
+) -> UploadResponse {
+    let mut fields: HashMap<String, String> = data
+        .texts
+        .into_iter()
+        .map(|text| (text.key, text.value))
+        .collect();
+    let expire = fields
+        .get("expire")
+        .and_then(|expire| u64::from_str(expire).ok());
+    let ajax = fields.get("ajax").is_some();
+    let token = fields.remove("token").unwrap_or_default();
+
+    if !accepted_tokens.contains(&token) {
+        if ajax {
+            UploadResponse::Data(
+                serde_json::to_string(&UploadData {
+                    success: false,
+                    error: Some("invalid token"),
+                    urls: None,
+                })
+                .unwrap_or_default(),
+            )
+        } else {
+            UploadResponse::Redirect(Redirect::to("/?error=invalid%20token"))
+        }
+    } else {
+        match data
+            .files
+            .into_iter()
+            .map(|file| {
+                let id = UploadId::generate(now() + expire.unwrap_or(THOUSAND_YEARS));
+                expire_queue.push(id);
+                let name = &file.filename;
+
+                let mut path: PathBuf = basedir.join(id.as_string());
+                create_dir(&path)?;
+                path.push(name);
+
+                let mut file = File::open(&file.path)?;
+                io::copy(&mut file, &mut File::create(&path)?)?;
+                Ok(format!("{}/{}", id.as_string(), &name))
+            })
+            .collect::<io::Result<Vec<String>>>()
+        {
+            Ok(urls) => {
+                if ajax {
+                    UploadResponse::Data(
+                        serde_json::to_string(&UploadData {
+                            success: true,
+                            error: None,
+                            urls: Some(urls),
+                        })
+                        .unwrap_or_default(),
+                    )
+                } else {
+                    UploadResponse::Redirect(Redirect::to(""))
+                }
+            }
+            Err(_) => UploadResponse::Data(
+                serde_json::to_string(&UploadData {
+                    success: false,
+                    error: Some("error while moving file"),
+                    urls: None,
+                })
+                .unwrap_or_default(),
+            ),
+        }
+    }
 }
 
 #[get("/<id>/<name..>")]
@@ -97,7 +212,7 @@ fn main() {
         .manage(tokens)
         .manage(basedir.clone())
         .manage(expire_queue)
-        .mount("/", routes![home, upload, download])
+        .mount("/", routes![home, upload, post_upload, download])
         .launch();
 }
 
