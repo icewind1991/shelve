@@ -2,9 +2,11 @@
 
 Quick and easy file hosting
 
-## Status
+![Shelve UI](screenshots/shelve.png)
 
-Backend POC is functional 
+## Tokens
+
+Upload tokens are configured by setting the `TOKENS` environment variable to a comma separated list.
 
 ## License
 
