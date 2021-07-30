@@ -37,12 +37,14 @@ pub enum UploadTokenError {
     Invalid,
 }
 
-impl<'a, 'r> FromRequest<'a, 'r> for UploadToken {
+#[async_trait::async_trait]
+impl<'r> FromRequest<'r> for UploadToken {
     type Error = UploadTokenError;
 
-    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let accepted_tokens = request
-            .guard::<State<ValidTokens>>()
+            .guard::<&State<ValidTokens>>()
+            .await
             .expect("No tokens configured");
         let keys: Vec<_> = request.headers().get("x-upload-token").collect();
 

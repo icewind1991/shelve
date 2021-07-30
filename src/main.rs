@@ -1,12 +1,11 @@
-#![feature(proc_macro_hygiene, decl_macro)]
-
 use crate::expire_queue::{ExpireQueue, InvalidUploadIdError, UploadId};
 use crate::token::{UploadToken, ValidTokens};
 use dotenv::dotenv;
-use rocket::http::{ContentType, RawStr};
+use rocket::data::ToByteUnit;
+use rocket::fs::NamedFile;
 use rocket::request::FromParam;
-use rocket::response::{NamedFile, Redirect, Responder};
-use rocket::*;
+use rocket::response::Redirect;
+use rocket::{get, launch, post, put, routes, Data, Responder, State};
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -14,7 +13,6 @@ use std::collections::HashMap;
 use std::env::{self, current_dir};
 use std::fs::{create_dir, read_dir, remove_dir_all, File};
 use std::io;
-use std::io::Cursor;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread::{sleep, spawn, JoinHandle};
@@ -28,10 +26,8 @@ mod upload;
 impl<'r> FromParam<'r> for UploadId {
     type Error = InvalidUploadIdError;
 
-    fn from_param(param: &'r RawStr) -> Result<Self, Self::Error> {
-        let param = param.url_decode()?;
-
-        UploadId::new(&param)
+    fn from_param(param: &'r str) -> Result<Self, Self::Error> {
+        UploadId::new(param)
     }
 }
 
@@ -39,22 +35,9 @@ impl<'r> FromParam<'r> for UploadId {
 #[folder = "templates/"]
 struct Templates;
 
+#[derive(Responder)]
+#[response(content_type = "html")]
 struct HtmlResponse(Cow<'static, [u8]>);
-
-impl<'r> Responder<'r> for HtmlResponse {
-    fn respond_to(self, _: &Request) -> response::Result<'r> {
-        match self.0 {
-            Cow::Borrowed(s) => Response::build()
-                .header(ContentType::HTML)
-                .sized_body(Cursor::new(s))
-                .ok(),
-            Cow::Owned(s) => Response::build()
-                .header(ContentType::HTML)
-                .sized_body(Cursor::new(s))
-                .ok(),
-        }
-    }
-}
 
 #[get("/")]
 fn home() -> HtmlResponse {
@@ -72,13 +55,13 @@ fn now() -> u64 {
 const THOUSAND_YEARS: u64 = 1000 * 356 * 24 * 60 * 60;
 
 #[put("/upload?<expire>&<name>", data = "<data>")]
-fn upload(
-    data: Data,
+async fn put_upload(
+    data: Data<'_>,
     expire: Option<u64>,
     name: String,
     _token: UploadToken,
-    basedir: State<PathBuf>,
-    expire_queue: State<ExpireQueue>,
+    basedir: &State<PathBuf>,
+    expire_queue: &State<ExpireQueue>,
 ) -> io::Result<String> {
     let id = UploadId::generate(now() + expire.unwrap_or(THOUSAND_YEARS));
     expire_queue.push(id);
@@ -87,7 +70,7 @@ fn upload(
     create_dir(&path)?;
     path.push(name);
 
-    data.stream_to_file(path)?;
+    data.open(2.gibibytes()).into_file(path).await?;
     Ok(id.as_string())
 }
 
@@ -107,9 +90,9 @@ struct UploadData {
 #[post("/upload", data = "<data>")]
 fn post_upload(
     data: MultipartDatas,
-    accepted_tokens: State<ValidTokens>,
-    basedir: State<PathBuf>,
-    expire_queue: State<ExpireQueue>,
+    accepted_tokens: &State<ValidTokens>,
+    basedir: &State<PathBuf>,
+    expire_queue: &State<ExpireQueue>,
 ) -> UploadResponse {
     let mut fields: HashMap<String, String> = data
         .texts
@@ -181,16 +164,17 @@ fn post_upload(
 }
 
 #[get("/<id>/<name..>")]
-fn download(id: UploadId, name: PathBuf, basedir: State<PathBuf>) -> Option<NamedFile> {
+async fn download(id: UploadId, name: PathBuf, basedir: &State<PathBuf>) -> Option<NamedFile> {
     if id.is_expired(now()) {
         None
     } else {
         let path = basedir.join(id.as_string()).join(name);
-        NamedFile::open(path).ok()
+        NamedFile::open(path).await.ok()
     }
 }
 
-fn main() {
+#[launch]
+fn rockert() -> _ {
     dotenv().ok();
 
     let mut env: HashMap<_, _> = env::vars().collect();
@@ -209,12 +193,11 @@ fn main() {
 
     expire_job(basedir.clone(), expire_queue.clone());
 
-    rocket::ignite()
+    rocket::build()
         .manage(tokens)
         .manage(basedir.clone())
         .manage(expire_queue)
-        .mount("/", routes![home, upload, post_upload, download])
-        .launch();
+        .mount("/", routes![home, put_upload, post_upload, download])
 }
 
 fn expire_job(expire_basedir: PathBuf, expire_queue: ExpireQueue) -> JoinHandle<()> {

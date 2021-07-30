@@ -2,8 +2,8 @@ use std::fs::{self, File};
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
 
-use rocket::data::{self, FromDataSimple};
-use rocket::{Data, Outcome, Request};
+use rocket::data::{self, FromData, Outcome, ToByteUnit};
+use rocket::{Data, Request};
 
 use multipart::server::Multipart;
 
@@ -41,10 +41,14 @@ impl Drop for FilePart {
 
 const TMP_PATH: &str = "/tmp/rust_upload/";
 
-impl<'t> FromDataSimple for MultipartDatas {
+#[async_trait::async_trait]
+impl<'r> FromData<'r> for MultipartDatas {
     type Error = String;
 
-    fn from_data(request: &Request, data: Data) -> data::Outcome<Self, String> {
+    async fn from_data(
+        request: &'r Request<'_>,
+        data: Data<'r>,
+    ) -> data::Outcome<'r, Self, String> {
         let ct = request
             .headers()
             .get_one("Content-Type")
@@ -53,7 +57,10 @@ impl<'t> FromDataSimple for MultipartDatas {
         let boundary = &ct[(idx + "boundary=".len())..];
 
         let mut d = Vec::new();
-        data.stream_to(&mut d).expect("Unable to read");
+        data.open(2.gibibytes())
+            .stream_to(&mut d)
+            .await
+            .expect("Unable to read");
 
         let mut mp = Multipart::with_body(Cursor::new(d), boundary);
         let mut texts = Vec::new();
