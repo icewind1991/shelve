@@ -2,7 +2,7 @@ use err_derive::Error;
 use priority_queue::PriorityQueue;
 use std::cmp::Ordering;
 use std::convert::TryInto;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Mutex};
 use uuid::{Builder, Uuid, Variant, Version};
 
@@ -66,6 +66,12 @@ impl UploadId {
 
     pub fn as_string(&self) -> String {
         format!("{}", self.0.to_simple())
+    }
+}
+
+impl Display for UploadId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0.to_simple(), f)
     }
 }
 

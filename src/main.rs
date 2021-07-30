@@ -57,20 +57,22 @@ const THOUSAND_YEARS: u64 = 1000 * 356 * 24 * 60 * 60;
 async fn put_upload(
     data: Data<'_>,
     expire: Option<u64>,
-    name: String,
+    name: &str,
     _token: UploadToken,
     basedir: &State<PathBuf>,
     expire_queue: &State<ExpireQueue>,
 ) -> io::Result<String> {
+    let name = <&FileName>::from(name);
     let id = UploadId::generate(now() + expire.unwrap_or(THOUSAND_YEARS));
     expire_queue.push(id);
 
     let mut path = basedir.join(id.as_string());
+    let name = format_filename(name);
     create_dir(&path)?;
-    path.push(name);
+    path.push(&name);
 
     data.open(2.gibibytes()).into_file(path).await?;
-    Ok(id.as_string())
+    Ok(format!("{}/{}", id, name))
 }
 
 #[derive(Debug, Responder)]
@@ -124,10 +126,11 @@ async fn post_upload(
             |mut file| async move {
                 let id = UploadId::generate(now() + expire.unwrap_or(THOUSAND_YEARS));
                 expire_queue.push(id);
-                let name = file.name().unwrap_or("upload");
-                let ext = file.raw_name().and_then(filename_ext).unwrap_or_default();
-                let name = format!("{}.{}", name, ext);
-                let url = format!("{}/{}", id.as_string(), &name);
+                let name = file
+                    .raw_name()
+                    .map(format_filename)
+                    .unwrap_or_else(|| "upload.bin".into());
+                let url = format!("{}/{}", id, &name);
 
                 let mut path: PathBuf = basedir.join(id.as_string());
                 create_dir(&path)?;
@@ -253,4 +256,12 @@ fn test_ext() {
     assert_eq!(None, filename_ext(".png".into()));
     assert_eq!(None, filename_ext("../foo.png".into()));
     assert_eq!(None, filename_ext("tmp/../foo.png".into()));
+}
+
+fn format_filename(name: &FileName) -> String {
+    let name_no_ext = name.as_str().unwrap_or("upload");
+    match filename_ext(name) {
+        Some(ext) => format!("{}.{}", name_no_ext, ext),
+        None => name_no_ext.into(),
+    }
 }
