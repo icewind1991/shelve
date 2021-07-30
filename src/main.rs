@@ -43,6 +43,15 @@ fn home() -> HtmlResponse {
     HtmlResponse(Templates::get("index.html").unwrap_or(Cow::Borrowed(b"Template not found")))
 }
 
+#[derive(Responder)]
+#[response(content_type = "image/svg+xml")]
+struct SvgResponse(Cow<'static, [u8]>);
+
+#[get("/icon.svg")]
+fn icon() -> SvgResponse {
+    SvgResponse(Templates::get("icon.svg").unwrap_or(Cow::Borrowed(b"Template not found")))
+}
+
 fn now() -> u64 {
     let start = SystemTime::now();
     start
@@ -211,7 +220,7 @@ fn rocket() -> _ {
         .manage(tokens)
         .manage(basedir.clone())
         .manage(expire_queue)
-        .mount("/", routes![home, put_upload, post_upload, download])
+        .mount("/", routes![home, put_upload, post_upload, download, icon])
 }
 
 fn expire_job(expire_basedir: PathBuf, expire_queue: ExpireQueue) -> JoinHandle<()> {

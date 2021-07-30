@@ -1,6 +1,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width" />
+    <link rel="shortcut icon" href="icon.svg" />
     <title>Shelve</title>
     <style>
         * {
@@ -154,15 +155,6 @@
             }
         }
 
-        .box__restart {
-            font-weight: 700;
-        }
-
-        .box__restart:focus,
-        .box__restart:hover {
-            color: #39bfd3;
-        }
-
         .js .box__file {
             width: 0.1px;
             height: 0.1px;
@@ -278,7 +270,6 @@
         expireInput = document.getElementById('expire'),
         box = form.querySelector('.dropbox'),
         errorMsg = form.querySelector('.box__error span'),
-        restart = form.querySelectorAll('.box__restart'),
         uploads = document.getElementById('uploads'),
         droppedFiles = false,
         showFiles = function (files) {
@@ -417,16 +408,6 @@
         ajax.send(ajaxData);
 
         return false;
-    });
-
-
-    // restart the form if has a state of error/success
-    Array.prototype.forEach.call(restart, function (entry) {
-        entry.addEventListener('click', function (e) {
-            e.preventDefault();
-            form.classList.remove('is-error', 'is-success');
-            input.click();
-        });
     });
 
     // Firefox focus bug fix for file input
