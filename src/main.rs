@@ -1,27 +1,26 @@
 use crate::expire_queue::{ExpireQueue, InvalidUploadIdError, UploadId};
 use crate::token::{UploadToken, ValidTokens};
 use dotenv::dotenv;
-use rocket::data::ToByteUnit;
-use rocket::fs::NamedFile;
+use futures_util::future::try_join_all;
+use rocket::data::{Limits, ToByteUnit};
+use rocket::form::Form;
+use rocket::fs::{FileName, NamedFile, TempFile};
 use rocket::request::FromParam;
 use rocket::response::Redirect;
-use rocket::{get, launch, post, put, routes, Data, Responder, State};
+use rocket::{get, launch, post, put, routes, Config, Data, FromForm, Responder, State};
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env::{self, current_dir};
-use std::fs::{create_dir, read_dir, remove_dir_all, File};
+use std::fs::{create_dir, create_dir_all, read_dir, remove_dir_all};
 use std::io;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use upload::MultipartDatas;
 
 mod expire_queue;
 mod token;
-mod upload;
 
 impl<'r> FromParam<'r> for UploadId {
     type Error = InvalidUploadIdError;
@@ -81,36 +80,38 @@ enum UploadResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct UploadData {
+struct UploadResponseData {
     success: bool,
-    error: Option<&'static str>,
+    error: Option<Cow<'static, str>>,
     urls: Option<Vec<String>>,
 }
 
+#[derive(FromForm, Debug)]
+struct UploadData<'r> {
+    expire: Option<u64>,
+    ajax: bool,
+    token: &'r str,
+    files: Vec<TempFile<'r>>,
+}
+
 #[post("/upload", data = "<data>")]
-fn post_upload(
-    data: MultipartDatas,
+async fn post_upload(
+    data: Form<UploadData<'_>>,
     accepted_tokens: &State<ValidTokens>,
     basedir: &State<PathBuf>,
     expire_queue: &State<ExpireQueue>,
 ) -> UploadResponse {
-    let mut fields: HashMap<String, String> = data
-        .texts
-        .into_iter()
-        .map(|text| (text.key, text.value))
-        .collect();
-    let expire = fields
-        .get("expire")
-        .and_then(|expire| u64::from_str(expire).ok());
-    let ajax = fields.get("ajax").is_some();
-    let token = fields.remove("token").unwrap_or_default();
+    let data = data.into_inner();
+    let expire = data.expire;
+    let ajax = data.ajax;
+    let token = data.token;
 
-    if !accepted_tokens.contains(&token) {
+    if !accepted_tokens.contains(token) {
         if ajax {
             UploadResponse::Data(
-                serde_json::to_string(&UploadData {
+                serde_json::to_string(&UploadResponseData {
                     success: false,
-                    error: Some("invalid token"),
+                    error: Some("invalid token".into()),
                     urls: None,
                 })
                 .unwrap_or_default(),
@@ -119,28 +120,28 @@ fn post_upload(
             UploadResponse::Redirect(Redirect::to("/?error=invalid%20token"))
         }
     } else {
-        match data
-            .files
-            .into_iter()
-            .map(|file| {
+        match try_join_all(data.files.into_iter().filter(|file| file.len() > 0).map(
+            |mut file| async move {
                 let id = UploadId::generate(now() + expire.unwrap_or(THOUSAND_YEARS));
                 expire_queue.push(id);
-                let name = &file.filename;
+                let name = file.name().unwrap_or("upload");
+                let ext = file.raw_name().and_then(filename_ext).unwrap_or_default();
+                let name = format!("{}.{}", name, ext);
+                let url = format!("{}/{}", id.as_string(), &name);
 
                 let mut path: PathBuf = basedir.join(id.as_string());
                 create_dir(&path)?;
                 path.push(name);
 
-                let mut file = File::open(&file.path)?;
-                io::copy(&mut file, &mut File::create(&path)?)?;
-                Ok(format!("{}/{}", id.as_string(), &name))
-            })
-            .collect::<io::Result<Vec<String>>>()
+                file.persist_to(path).await.map(|_| url)
+            },
+        ))
+        .await
         {
             Ok(urls) => {
                 if ajax {
                     UploadResponse::Data(
-                        serde_json::to_string(&UploadData {
+                        serde_json::to_string(&UploadResponseData {
                             success: true,
                             error: None,
                             urls: Some(urls),
@@ -151,10 +152,10 @@ fn post_upload(
                     UploadResponse::Redirect(Redirect::to(""))
                 }
             }
-            Err(_) => UploadResponse::Data(
-                serde_json::to_string(&UploadData {
+            Err(e) => UploadResponse::Data(
+                serde_json::to_string(&UploadResponseData {
                     success: false,
-                    error: Some("error while moving file"),
+                    error: Some(format!("error while moving file: {}", e).into()),
                     urls: None,
                 })
                 .unwrap_or_default(),
@@ -174,7 +175,7 @@ async fn download(id: UploadId, name: PathBuf, basedir: &State<PathBuf>) -> Opti
 }
 
 #[launch]
-fn rockert() -> _ {
+fn rocket() -> _ {
     dotenv().ok();
 
     let mut env: HashMap<_, _> = env::vars().collect();
@@ -191,9 +192,19 @@ fn rockert() -> _ {
         .map(PathBuf::from)
         .unwrap_or_else(|| current_dir().unwrap_or_default().join("data"));
 
+    let tmpdir = basedir.join("tmp");
+    create_dir_all(&tmpdir).expect("failed to create tmp directory");
+
     expire_job(basedir.clone(), expire_queue.clone());
 
-    rocket::build()
+    let figment = Config::figment().merge(("temp_dir", tmpdir)).merge((
+        "limits",
+        Limits::new()
+            .limit("file", 2.gibibytes())
+            .limit("data-form", 2.gibibytes()),
+    ));
+
+    rocket::custom(figment)
         .manage(tokens)
         .manage(basedir.clone())
         .manage(expire_queue)
@@ -222,4 +233,24 @@ fn expire_job(expire_basedir: PathBuf, expire_queue: ExpireQueue) -> JoinHandle<
             sleep(Duration::from_secs(5 * 60));
         }
     })
+}
+
+fn filename_ext(name: &FileName) -> Option<&str> {
+    let raw = name.dangerous_unsafe_unsanitized_raw().as_str();
+    let (name, ext) = raw.split_once('.')?;
+    if name.len() > 0 && ext.len() < 8 && ext.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+    {
+        Some(ext)
+    } else {
+        None
+    }
+}
+
+#[test]
+fn test_ext() {
+    assert_eq!(Some("jpg"), filename_ext("foo.jpg".into()));
+    assert_eq!(Some("tar.gz"), filename_ext("foo.tar.gz".into()));
+    assert_eq!(None, filename_ext(".png".into()));
+    assert_eq!(None, filename_ext("../foo.png".into()));
+    assert_eq!(None, filename_ext("tmp/../foo.png".into()));
 }

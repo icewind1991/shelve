@@ -129,10 +129,6 @@ impl ExpireQueue {
 
         expired
     }
-
-    pub fn len(&self) -> usize {
-        self.queue.lock().unwrap().len()
-    }
 }
 
 #[test]
