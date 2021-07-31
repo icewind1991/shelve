@@ -1,16 +1,25 @@
-FROM ekidd/rust-musl-builder AS build
+FROM rust AS build
 
-ADD . ./
-RUN sudo chown -R rust:rust .
+RUN rustup target add x86_64-unknown-linux-musl
 
-RUN cargo build --release
+COPY Cargo.toml Cargo.lock ./
 
-FROM alpine:latest
+# Build with a dummy main to pre-build dependencies
+RUN mkdir src && \
+ echo "fn main(){}" > src/main.rs && \
+ cargo build --release --target x86_64-unknown-linux-musl && \
+ rm -r src
 
-COPY --from=build /home/rust/src/target/x86_64-unknown-linux-musl/release/shelve /
-RUN mkdir /data
-ADD ./target/x86_64-unknown-linux-musl/release/shelve /
+COPY src/ ./src/
+COPY templates/ ./templates/
+
+RUN touch src/main.rs && cargo build --release --target x86_64-unknown-linux-musl
+
+FROM scratch
+
+COPY --from=build /target/x86_64-unknown-linux-musl/release/shelve /
 EXPOSE 80
 ENV ROCKET_PORT=80
+ENV ROCKET_ADDRESS=0.0.0.0
 
 CMD ["/shelve"]
