@@ -6,9 +6,9 @@ use rocket::data::{Limits, ToByteUnit};
 use rocket::form::Form;
 use rocket::fs::{FileName, NamedFile, TempFile};
 use rocket::request::FromParam;
-use rocket::response::Redirect;
-use rocket::{get, launch, post, put, routes, Config, Data, FromForm, Responder, State};
-use rust_embed::RustEmbed;
+use rocket::response::{Redirect, Responder};
+use rocket::{get, launch, post, put, routes, Config, Data, FromForm, Request, State};
+use rust_embed::{EmbeddedFile, RustEmbed};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -34,22 +34,38 @@ impl<'r> FromParam<'r> for UploadId {
 #[folder = "templates/"]
 struct Templates;
 
+struct FileResponse(EmbeddedFile);
+
+impl<'r, 'o: 'r> Responder<'r, 'o> for FileResponse {
+    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'o> {
+        self.0.data.respond_to(request)
+    }
+}
+
 #[derive(Responder)]
 #[response(content_type = "html")]
-struct HtmlResponse(Cow<'static, [u8]>);
+struct HtmlResponse(FileResponse);
 
 #[get("/")]
 fn home() -> HtmlResponse {
-    HtmlResponse(Templates::get("index.html").unwrap_or(Cow::Borrowed(b"Template not found")))
+    HtmlResponse(
+        Templates::get("index.html")
+            .map(FileResponse)
+            .expect("Template not found"),
+    )
 }
 
 #[derive(Responder)]
 #[response(content_type = "image/svg+xml")]
-struct SvgResponse(Cow<'static, [u8]>);
+struct SvgResponse(FileResponse);
 
 #[get("/icon.svg")]
 fn icon() -> SvgResponse {
-    SvgResponse(Templates::get("icon.svg").unwrap_or(Cow::Borrowed(b"Template not found")))
+    SvgResponse(
+        Templates::get("icon.svg")
+            .map(FileResponse)
+            .expect("Template not found"),
+    )
 }
 
 fn now() -> u64 {

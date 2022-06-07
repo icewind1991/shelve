@@ -34,7 +34,7 @@ impl UploadId {
         let mut uuid_bytes = *Builder::from_bytes(bytes)
             .set_variant(Variant::RFC4122)
             .set_version(Version::Random)
-            .build()
+            .as_uuid()
             .as_bytes();
 
         // store the expire time in the top 7 bytes of the uuid
@@ -65,13 +65,13 @@ impl UploadId {
     }
 
     pub fn as_string(&self) -> String {
-        format!("{}", self.0.to_simple())
+        format!("{}", self.0.as_simple())
     }
 }
 
 impl Display for UploadId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0.to_simple(), f)
+        Display::fmt(&self.0.as_simple(), f)
     }
 }
 
