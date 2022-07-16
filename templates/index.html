@@ -1,9 +1,33 @@
 <html>
 <head>
-    <meta name="viewport" content="width=device-width" />
-    <link rel="shortcut icon" href="icon.svg" />
+    <meta name="viewport" content="width=device-width"/>
+    <link rel="shortcut icon" href="icon.svg"/>
     <title>Shelve</title>
     <style>
+        :root {
+            --bg-color: #e5edf1;
+            --bg-color-accent: white;
+            --outline-color: #92b0b3;
+            --text-color: #0f3c4b;
+            --highlight-outline-color: #c8dadf;
+            --highlight-background-color: #fff;
+            --label-color: #39bfd3;
+            --input-text-color: #000000;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: rgb(26, 41, 49);
+                --bg-color-accent: rgb(24, 26, 27);
+                --outline-color: rgb(69, 75, 77);
+                --text-color: rgb(204, 199, 192);
+                --highlight-outline-color: rgb(47, 74, 81);
+                --highlight-background-color: rgb(24, 26, 27);
+                --label-color: #164b53;
+                --input-text-color: rgb(204, 199, 192);
+            }
+        }
+
         * {
             box-sizing: border-box;
         }
@@ -21,8 +45,8 @@
             align-content: stretch;
             flex-direction: column;
             font-family: Roboto, sans-serif;
-            color: #0f3c4b;
-            background-color: #e5edf1;
+            color: var(--text-color);
+            background-color: var(--bg-color);
         }
 
         #uploads {
@@ -37,6 +61,12 @@
         #uploads a {
             text-overflow: ellipsis;
             width: 400px;
+        }
+
+        #expire, #token {
+            color: var(--input-text-color);
+            background-color: var(--bg-color-accent);
+            padding: 4px;
         }
 
         p {
@@ -59,7 +89,7 @@
             font-size: 1.25rem; /* 20 */
             position: relative;
             padding: 100px 20px;
-            background-color: white;
+            background-color: var(--bg-color-accent);
             cursor: pointer;
             display: flex;
             justify-content: center;
@@ -68,15 +98,15 @@
         }
 
         .dropbox.has-advanced-upload {
-            outline: 2px dashed #92b0b3;
+            outline: 2px dashed var(--outline-color);
             outline-offset: -10px;
             transition: outline-offset .15s ease-in-out, background-color .15s linear;
         }
 
         .dropbox.is-dragover {
             outline-offset: -20px;
-            outline-color: #c8dadf;
-            background-color: #fff;
+            outline-color: var(--highlight-outline-color);
+            background-color: var(--highlight-background-color);
         }
 
         .box__dragndrop,
@@ -91,7 +121,7 @@
         .dropbox.has-advanced-upload .box__icon {
             width: 100%;
             height: 80px;
-            fill: #92b0b3;
+            fill: var(--outline-color);
             display: block;
             margin-bottom: 40px;
         }
@@ -176,12 +206,12 @@
         .js .box__file + label:hover strong,
         .box__file:focus + label strong,
         .box__file.has-focus + label strong {
-            color: #39bfd3;
+            color: var(--label-color);
         }
 
         .js .box__file:focus + label,
         .js .box__file.has-focus + label {
-            outline: 1px dotted #000;
+            outline: 1px dotted var(--text-primary);
             outline: -webkit-focus-ring-color auto 5px;
         }
 
@@ -199,8 +229,8 @@
 
         .box__button {
             font-weight: 700;
-            color: #e5edf1;
-            background-color: #39bfd3;
+            color: var(--highlight-outline-color);
+            background-color: var(--label-color);
             display: none;
             padding: 8px 16px;
             margin: 40px auto 0;
@@ -208,7 +238,7 @@
 
         .box__button:hover,
         .box__button:focus {
-            background-color: #0f3c4b;
+            background-color: var(--text-primary);
         }
 
         #box {
