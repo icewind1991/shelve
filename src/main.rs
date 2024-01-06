@@ -103,7 +103,7 @@ async fn put_upload(
 #[derive(Debug, Responder)]
 enum UploadResponse {
     Data(String),
-    Redirect(Redirect),
+    Redirect(Box<Redirect>),
 }
 
 #[derive(Debug, Serialize)]
@@ -144,7 +144,7 @@ async fn post_upload(
                 .unwrap_or_default(),
             )
         } else {
-            UploadResponse::Redirect(Redirect::to("/?error=invalid%20token"))
+            UploadResponse::Redirect(Box::new(Redirect::to("/?error=invalid%20token")))
         }
     } else {
         match try_join_all(data.files.into_iter().filter(|file| file.len() > 0).map(
@@ -177,7 +177,7 @@ async fn post_upload(
                         .unwrap_or_default(),
                     )
                 } else {
-                    UploadResponse::Redirect(Redirect::to(""))
+                    UploadResponse::Redirect(Box::new(Redirect::to("")))
                 }
             }
             Err(e) => UploadResponse::Data(
@@ -241,15 +241,21 @@ fn rocket() -> _ {
 
 fn expire_job(expire_basedir: PathBuf, expire_queue: ExpireQueue) -> JoinHandle<()> {
     spawn(move || {
-        for dir_entry in read_dir(&expire_basedir).expect("Failed to list base directory") {
-            if let Ok(entry) = dir_entry {
-                if let Some(upload_id) = entry
-                    .file_name()
-                    .to_str()
-                    .and_then(|s| UploadId::new(s).ok())
-                {
-                    expire_queue.push(upload_id);
-                }
+        let entries = match read_dir(&expire_basedir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!("Failed to list base directory: {e:#}");
+                return;
+            }
+        };
+
+        for entry in entries.flatten() {
+            if let Some(upload_id) = entry
+                .file_name()
+                .to_str()
+                .and_then(|s| UploadId::new(s).ok())
+            {
+                expire_queue.push(upload_id);
             }
         }
 
@@ -266,7 +272,9 @@ fn expire_job(expire_basedir: PathBuf, expire_queue: ExpireQueue) -> JoinHandle<
 fn filename_ext(name: &FileName) -> Option<&str> {
     let raw = name.dangerous_unsafe_unsanitized_raw().as_str();
     let (name, ext) = raw.split_once('.')?;
-    if name.len() > 0 && ext.len() < 8 && ext.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+    if !name.is_empty()
+        && ext.len() < 8
+        && ext.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
     {
         Some(ext)
     } else {

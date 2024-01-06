@@ -61,7 +61,7 @@ impl UploadId {
     }
 
     pub fn is_expired(&self, time: u64) -> bool {
-        return time >= self.get_expire();
+        time >= self.get_expire()
     }
 
     pub fn as_string(&self) -> String {
@@ -87,7 +87,7 @@ pub struct Expiration(u64);
 impl PartialOrd for Expiration {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         // reverse the order so sort nearest expiration time first
-        other.0.partial_cmp(&self.0)
+        Some(other.0.cmp(&self.0))
     }
 }
 
