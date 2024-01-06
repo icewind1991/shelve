@@ -1,9 +1,9 @@
-use err_derive::Error;
 use priority_queue::PriorityQueue;
 use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Mutex};
+use thiserror::Error;
 use uuid::{Builder, Uuid, Variant, Version};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Copy)]
@@ -11,10 +11,10 @@ pub struct UploadId(Uuid);
 
 #[derive(Debug, Error)]
 pub enum InvalidUploadIdError {
-    #[error(display = "Invalid string")]
-    InvalidString(#[error(source)] std::str::Utf8Error),
-    #[error(display = "Invalid upload id, uuid")]
-    InvalidUUID(#[error(source)] uuid::Error),
+    #[error("Invalid string")]
+    InvalidString(#[from] std::str::Utf8Error),
+    #[error("Invalid upload id, uuid")]
+    InvalidUUID(#[from] uuid::Error),
 }
 
 impl UploadId {

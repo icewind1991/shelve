@@ -1,6 +1,6 @@
 use crate::expire_queue::{ExpireQueue, InvalidUploadIdError, UploadId};
 use crate::token::{UploadToken, ValidTokens};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use futures_util::future::try_join_all;
 use rocket::data::{Limits, ToByteUnit};
 use rocket::form::Form;
