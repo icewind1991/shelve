@@ -102,6 +102,17 @@
     )
     // {
       overlays.default = import ./overlay.nix;
-      nixosModules.default = import ./module.nix;
+      nixosModules.default = {
+        pkgs,
+        config,
+        lib,
+        ...
+      }: {
+        imports = [./module.nix];
+        config = lib.mkIf config.services.shelve.enable {
+          nixpkgs.overlays = [self.overlays.default];
+          services.shelve.package = lib.mkDefault pkgs.shelve;
+        };
+      };
     };
 }

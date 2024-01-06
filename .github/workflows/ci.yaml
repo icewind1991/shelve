@@ -51,7 +51,6 @@ jobs:
       - id: set-matrix
         run: echo "matrix=$(nix eval --json ".#matrix.x86_64-linux")" | tee $GITHUB_OUTPUT
 
-
   build:
     runs-on: ubuntu-latest
     needs: [check, matrix]
@@ -72,9 +71,23 @@ jobs:
           name: shelve-${{ matrix.target }}
           path: result/bin/shelve${{ matrix.artifactSuffix }}
 
+
+  build-nixpkgs:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v20
+      - uses: icewind1991/attic-action@v1
+        with:
+          name: ci
+          instance: https://cache.icewind.me
+          authToken: '${{ secrets.ATTIC_TOKEN }}'
+      - run: nix build .#shelve
+
   docker:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-nixpkgs
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

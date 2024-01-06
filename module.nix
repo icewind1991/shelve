@@ -35,7 +35,6 @@ in {
     };
 
     package = mkOption {
-      default = pkgs.shelve;
       type = types.package;
       defaultText = literalExpression "pkgs.shelve";
       description = "package to use";
