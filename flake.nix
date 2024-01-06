@@ -1,7 +1,15 @@
 {
   inputs = {
+    nixpkgs.url = "nixpkgs/nixos-23.11";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
+    naersk.inputs.nixpkgs.follows = "nixpkgs";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    rust-overlay.inputs.flake-utils.follows = "flake-utils";
+    cross-naersk.url = "github:icewind1991/cross-naersk";
+    cross-naersk.inputs.nixpkgs.follows = "nixpkgs";
+    cross-naersk.inputs.naersk.follows = "naersk";
   };
 
   outputs = {
@@ -9,104 +17,91 @@
     nixpkgs,
     flake-utils,
     naersk,
+    rust-overlay,
+    cross-naersk,
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
-        pkgs = nixpkgs.legacyPackages."${system}";
-        naersk-lib = naersk.lib."${system}";
-      in rec {
-        # `nix build`
-        packages.shelve = naersk-lib.buildPackage {
-          pname = "shelve";
-          root = ./.;
+        overlays = [
+          (import rust-overlay)
+          (import ./overlay.nix)
+        ];
+        pkgs = (import nixpkgs) {
+          inherit system overlays;
         };
-        defaultPackage = packages.shelve;
-        defaultApp = packages.shelve;
+        inherit (pkgs) lib callPackage rust-bin mkShell;
+        inherit (lib.sources) sourceByRegex;
+        inherit (builtins) fromTOML readFile map;
 
-        # `nix develop`
-        devShell = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [rustc cargo bacon];
+        msrv = (fromTOML (readFile ./Cargo.toml)).package.rust-version;
+        toolchain = rust-bin.stable.latest.default;
+        msrvToolchain = rust-bin.stable."${msrv}".default;
+
+        naersk' = callPackage naersk {
+          rustc = toolchain;
+          cargo = toolchain;
+        };
+        msrvNaersk = callPackage naersk {
+          rustc = msrvToolchain;
+          cargo = msrvToolchain;
+        };
+        cross-naersk' = pkgs.callPackage cross-naersk {inherit naersk;};
+
+        buildMatrix = targets: {
+          include =
+            map (target: {
+              inherit target;
+              artifactSuffix = cross-naersk'.execSufficForTarget target;
+            })
+            targets;
+        };
+
+        hostTarget = pkgs.hostPlatform.config;
+        targets = [
+          "x86_64-unknown-linux-musl"
+          "x86_64-pc-windows-gnu"
+          hostTarget
+        ];
+        releaseTargets = lib.lists.remove hostTarget targets;
+
+        src = sourceByRegex ./. ["Cargo.*" "(src|templates)(/.*)?"];
+        nearskOpt = {
+          pname = "shelve";
+          root = src;
+        };
+      in rec {
+        packages =
+          lib.attrsets.genAttrs targets (target:
+            (cross-naersk'.buildPackage target) nearskOpt)
+          // {
+            shelve = pkgs.shelve;
+            check = naersk'.buildPackage (nearskOpt
+              // {
+                mode = "check";
+              });
+            clippy = naersk'.buildPackage (nearskOpt
+              // {
+                mode = "clippy";
+              });
+            msrv = msrvNaersk.buildPackage (nearskOpt
+              // {
+                mode = "check";
+              });
+            docker = callPackage ./docker.nix {};
+            default = pkgs.shelve;
+          };
+        apps.default = packages.default;
+
+        matrix = buildMatrix targets;
+        releaseMatrix = buildMatrix releaseTargets;
+
+        devShells.default = mkShell {
+          nativeBuildInputs = with pkgs; [toolchain bacon cargo-msrv];
         };
       }
     )
     // {
-      nixosModule = {
-        config,
-        lib,
-        pkgs,
-        ...
-      }:
-        with lib; let
-          cfg = config.services.shelve;
-        in {
-          options.services.shelve = {
-            enable = mkEnableOption "Enables the shelve service";
-
-            port = mkOption rec {
-              type = types.int;
-              example = 8080;
-              description = "The port to listen on";
-            };
-
-            bindAddress = mkOption {
-              type = types.str;
-              default = "0.0.0.0";
-              description = "Address to listen on";
-            };
-
-            tokens = mkOption {
-              type = types.listOf types.str;
-              default = [];
-              example = ["foo" "bar"];
-              description = "upload tokens";
-            };
-
-            basedir = mkOption {
-              type = types.str;
-              description = "data base directory";
-            };
-
-            openPort = mkOption {
-              type = types.bool;
-              default = false;
-              example = true;
-              description = "open port";
-            };
-          };
-
-          config = mkIf cfg.enable {
-            networking.firewall.allowedTCPPorts = lib.optional cfg.openPort cfg.port;
-
-            users.groups.shelve = {};
-            users.users.shelve = {
-              isSystemUser = true;
-              group = "shelve";
-            };
-
-            systemd.services.shelve = let
-              pkg = self.defaultPackage.${pkgs.system};
-            in {
-              wantedBy = ["multi-user.target"];
-              environment = {
-                ROCKET_PORT = toString cfg.port;
-                ROCKET_ADDRESS = cfg.bindAddress;
-                BASEDIR = cfg.basedir;
-                TOKENS = concatStringsSep "," cfg.tokens;
-              };
-              script = "${pkg}/bin/shelve";
-
-              serviceConfig = {
-                Restart = "on-failure";
-                User = "shelve";
-                PrivateTmp = true;
-                ProtectSystem = "full";
-                ProtectHome = true;
-                NoNewPrivileges = true;
-                ReadWritePaths = cfg.basedir;
-                NoExecPaths = cfg.basedir;
-              };
-            };
-          };
-        };
+      overlays.default = import ./overlay.nix;
+      nixosModules.default = import ./module.nix;
     };
 }
