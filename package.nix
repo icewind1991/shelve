@@ -7,7 +7,7 @@
   src = sourceByRegex ./. ["Cargo.*" "(src|templates)(/.*)?"];
 in
   rustPlatform.buildRustPackage rec {
-    name = "shelve";
+    pname = "shelve";
     version = "0.1.0";
 
     inherit src;
