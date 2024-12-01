@@ -4,17 +4,17 @@ version = "0.1.0"
 authors = ["Robin Appelman <robin@icewind.nl>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
-rust-version = "1.69.0"
+rust-version = "1.70.0"
 
 [dependencies]
-rocket = "0.5.0"
-priority-queue = "1.3.2"
+rocket = "0.5.1"
+priority-queue = "2.1.1"
 dotenvy = "0.15.7"
-thiserror = "1.0.51"
+thiserror = "2.0.3"
 rand = "0.8.5"
-uuid = { version = "1.6.1", features = ["serde", "v4"] }
-rust-embed = "8.1.0"
-serde = "1.0.193"
-serde_json = "1.0.108"
-async-trait = "0.1.75"
-futures-util = "0.3.30"
+uuid = { version = "1.11.0", features = ["serde", "v4"] }
+rust-embed = "8.4.0"
+serde = "1.0.215"
+serde_json = "1.0.133"
+async-trait = "0.1.83"
+futures-util = "0.3.31"

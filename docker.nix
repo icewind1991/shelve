@@ -1,6 +1,6 @@
-{
-  dockerTools,
-  shelve,
+{ dockerTools
+, shelve
+,
 }:
 dockerTools.buildLayeredImage {
   name = "icewind1991/shelve";
@@ -11,9 +11,9 @@ dockerTools.buildLayeredImage {
     dockerTools.caCertificates
   ];
   config = {
-    Cmd = ["shelve"];
+    Cmd = [ "shelve" ];
     ExposedPorts = {
-      "80/tcp" = {};
+      "80/tcp" = { };
     };
     Env = [
       "ROCKET_ADDRESS=0.0.0.0"
