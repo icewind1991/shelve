@@ -1,3 +1,3 @@
 final: prev: {
-  shelve = final.callPackage ./package.nix { };
+  shelve = final.callPackage ./package.nix {};
 }

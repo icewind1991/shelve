@@ -1,12 +1,12 @@
-{ config
-, lib
-, pkgs
-, ...
+{
+  config,
+  lib,
+  pkgs,
+  ...
 }:
 with lib; let
   cfg = config.services.shelve;
-in
-{
+in {
   options.services.shelve = {
     enable = mkEnableOption "Enables the shelve service";
 
@@ -24,8 +24,8 @@ in
 
     tokens = mkOption {
       type = types.listOf types.str;
-      default = [ ];
-      example = [ "foo" "bar" ];
+      default = [];
+      example = ["foo" "bar"];
       description = "upload tokens";
     };
 
@@ -51,14 +51,14 @@ in
   config = mkIf cfg.enable {
     networking.firewall.allowedTCPPorts = lib.optional cfg.openPort cfg.port;
 
-    users.groups.shelve = { };
+    users.groups.shelve = {};
     users.users.shelve = {
       isSystemUser = true;
       group = "shelve";
     };
 
     systemd.services.shelve = {
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       environment = {
         ROCKET_PORT = toString cfg.port;
         ROCKET_ADDRESS = cfg.bindAddress;

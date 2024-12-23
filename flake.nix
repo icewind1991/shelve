@@ -10,23 +10,24 @@
       inputs.flakelight.follows = "flakelight";
     };
   };
-  outputs = { mill-scale, ... }: mill-scale ./. {
-    extraPaths = [
-      ./templates
-    ];
-    nixosModules = { outputs, ... }: {
-      default =
-        { pkgs
-        , config
-        , lib
-        , ...
+  outputs = {mill-scale, ...}:
+    mill-scale ./. {
+      extraPaths = [
+        ./templates
+      ];
+      nixosModules = {outputs, ...}: {
+        default = {
+          pkgs,
+          config,
+          lib,
+          ...
         }: {
-          imports = [ ./nix/module.nix ];
+          imports = [./nix/module.nix];
           config = lib.mkIf config.services.shelve.enable {
-            nixpkgs.overlays = [ outputs.overlays.default ];
+            nixpkgs.overlays = [outputs.overlays.default];
             services.shelve.package = lib.mkDefault pkgs.shelve;
           };
         };
+      };
     };
-  };
 }
