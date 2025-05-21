@@ -1,3 +1,5 @@
+# Moved to https://codeberg.org/icewind/shelve
+
 # Shelve
 
 Quick and easy file hosting
